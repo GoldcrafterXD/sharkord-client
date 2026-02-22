@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sharkord — Sign in</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b0b0c;
+            --card: #111214;
+            --panel: #171717;
+            --muted: #9aa3ad;
+            --accent: #2f9bff;
+            --border: rgba(255, 255, 255, 0.03);
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        html,
+        body {
+            height: 100%
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+            background: linear-gradient(180deg, var(--bg), #050506);
+            color: #e6eef6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 420px
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+        }
+
+        .form-row {
+            display: flex;
+            flex-direction: column;
+            gap: 8px
+        }
+
+        .switch {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 6px
+        }
+
+        .switch .labeltext {
+            color: var(--muted);
+            font-size: 13px
+        }
+
+        .switch input {
+            display: none
+        }
+
+        .switch .track {
+            width: 44px;
+            height: 24px;
+            border-radius: 999px;
+            background: transparent;
+            border: 1px solid var(--border);
+            position: relative;
+            flex: 0 0 44px
+        }
+
+        .switch .thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #e6eef6;
+            transition: transform .18s ease
+        }
+
+        .switch input:checked+.track {
+            background: var(--accent);
+            border-color: transparent
+        }
+
+        .switch input:checked+.track .thumb {
+            transform: translateX(20px);
+            background: #021e3a
+        }
+
+        label {
+            font-size: 13px;
+            color: var(--muted)
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            background: transparent;
+            border: 1px solid var(--border);
+            padding: 10px 12px;
+            border-radius: 8px;
+            color: inherit;
+            font-size: 14px;
+            outline: none
+        }
+
+        .connect-btn {
+            width: 100%;
+            margin-top: 12px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer
+        }
+
+        .connect-btn.primary {
+            background: #202225;
+            color: #e6eef6
+        }
+
+        .cancel-btn {
+            display: none;
+            margin-top: 8px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer
+        }
+
+        .disclaimer {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 12px
+        }
+
+        .footer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 14px;
+            color: var(--muted);
+            font-size: 12px;
+            gap: 8px
+        }
+
+        .small-link {
+            color: var(--muted);
+            text-decoration: none
+        }
+
+        @media (max-width:420px) {
+            .container {
+                padding: 8px
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="card" role="main">
+            <div class="form-row">
+                <label for="serverUrl">Server</label>
+                <input id="serverUrl" type="text" placeholder="https://sharkord.com" autocomplete="off" />
+
+                <label class="switch" for="saveServer">
+                    <input id="saveServer" type="checkbox" />
+                    <span class="track"><span class="thumb"></span></span>
+                    <span class="labeltext">Remember this server</span>
+                </label>
+
+                <button id="go" class="connect-btn primary">Connect</button>
+                <div id="status" class="disclaimer" aria-live="polite"></div>
+                <button id="cancelRedirect" class="cancel-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Server URL check + redirect logic (keeps same behavior)
+        let redirectInterval = null;
+        const goBtn = document.getElementById('go');
+        const input = document.getElementById('serverUrl');
+        const status = document.getElementById('status');
+        const cancelBtn = document.getElementById('cancelRedirect');
+        const saveCheckbox = document.getElementById('saveServer');
+
+        // If a server is stored, start a 3s countdown then redirect. User can cancel.
+        (function () {
+            try {
+                const saved = localStorage.getItem('sharkord_server');
+                if (saved) {
+                    input.value = saved;
+                    startAutoRedirect(saved);
+                }
+            } catch (e) {/* ignore */ }
+        })();
+
+        function startAutoRedirect(url) {
+            let n = 3;
+            setStatus('Redirecting in ' + n + '…');
+            cancelBtn.style.display = 'inline-block';
+            goBtn.disabled = true; input.disabled = true; cancelBtn.disabled = false;
+            redirectInterval = setInterval(() => {
+                n -= 1;
+                if (n <= 0) {
+                    _redirectInterval = null;
+                    setStatus('Redirecting...');
+                    window.location.href = url;
+                    return;
+                }
+                setStatus('Redirecting in ' + n + '…');
+            }, 1000);
+        }
+
+        cancelBtn.addEventListener('click', () => {
+            console.log('Cancel redirect clicked');
+            clearInterval(redirectInterval);
+            setStatus('Redirect canceled.');
+            cancelBtn.style.display = 'none';
+            goBtn.disabled = false; input.disabled = false; cancelBtn.disabled = true;
+        });
+
+        // Prefill from localStorage if user previously saved a server
+        try {
+            const saved = localStorage.getItem('sharkord_server');
+            if (saved) { input.value = saved; saveCheckbox.checked = true; }
+        } catch (e) {/* ignore */ }
+
+        function setStatus(msg, isError = false) {
+            status.textContent = msg;
+            status.style.color = isError ? '#ff8b8b' : 'var(--muted)';
+        }
+
+        async function checkAndRedirect(raw) {
+            setStatus('Validating URL...');
+            let url = raw.trim();
+            if (!url) { setStatus('Please enter a server URL.', true); return; }
+            if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
+            try { url = new URL(url).toString(); } catch (e) { setStatus('Invalid URL format.', true); return; }
+
+            goBtn.disabled = true; input.disabled = true; saveCheckbox.disabled = true; setStatus('Checking server availability...');
+
+            // Try HEAD with CORS allowed
+            try {
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), 5000);
+                const resp = await fetch(url, { method: 'HEAD', mode: 'cors', signal: controller.signal });
+                clearTimeout(id);
+                if (resp && (resp.ok || (resp.status >= 200 && resp.status < 400))) {
+                    // persist if requested
+                    try { if (saveCheckbox.checked) localStorage.setItem('sharkord_server', url); else localStorage.removeItem('sharkord_server'); } catch (e) { }
+                    setStatus('Server is reachable — redirecting...');
+                    window.location.href = url;
+                    return;
+                }
+            } catch (err) { /* fallthrough */ }
+
+            // Try HEAD with no-cors (opaque)
+            try {
+                const controller2 = new AbortController();
+                const id2 = setTimeout(() => controller2.abort(), 5000);
+                await fetch(url, { method: 'HEAD', mode: 'no-cors', signal: controller2.signal });
+                clearTimeout(id2);
+                try { if (saveCheckbox.checked) localStorage.setItem('sharkord_server', url); else localStorage.removeItem('sharkord_server'); } catch (e) { }
+                setStatus('Server responded (no-cors) — redirecting...');
+                window.location.href = url;
+                return;
+            } catch (err) { /* fallthrough */ }
+
+            // Fallback: ping favicon
+            try {
+                await new Promise((resolve, reject) => {
+                    const img = new Image();
+                    let settled = false;
+                    const timer = setTimeout(() => { if (!settled) { settled = true; reject(new Error('timeout')); } }, 5000);
+                    img.onload = () => { if (!settled) { settled = true; clearTimeout(timer); resolve(); } };
+                    img.onerror = () => { if (!settled) { settled = true; clearTimeout(timer); reject(new Error('img error')); } };
+                    const u = new URL(url);
+                    img.src = u.origin + '/favicon.ico';
+                });
+                try { if (saveCheckbox.checked) localStorage.setItem('sharkord_server', url); else localStorage.removeItem('sharkord_server'); } catch (e) { }
+                setStatus('Favicon reachable — redirecting...');
+                window.location.href = url;
+                return;
+            } catch (e) {
+                setStatus('Server not reachable or blocked by CORS.', true);
+            } finally {
+                goBtn.disabled = false; input.disabled = false; saveCheckbox.disabled = false;
+            }
+        }
+
+        goBtn.addEventListener('click', () => checkAndRedirect(input.value));
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkAndRedirect(input.value); });
+        saveCheckbox.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkAndRedirect(input.value); });
+    </script>
+
+</body>
+
+</html>

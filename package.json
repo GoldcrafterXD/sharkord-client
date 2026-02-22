@@ -1,0 +1,45 @@
+{
+  "name": "sharkord-client",
+  "version": "1.0.0",
+  "description": "Sharkord Electron client",
+  "author": "GoldcrafterXD <goldcrafterxd@example.com>",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --inspect=5858",
+    "dist": "electron-builder --x64",
+    "dist:win": "electron-builder --win --x64",
+    "dist:linux": "electron-builder --linux --x64"
+  },
+  "devDependencies": {
+    "electron": "latest",
+    "electron-builder": "^24.0.0",
+    "electron-icon-maker": "^0.0.5"
+  },
+  "build": {
+    "appId": "com.goldcrafterxd.sharkord-client",
+    "productName": "Sharkord",
+    "icon": "build/icons/png/icon.png",
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "icon": "build/icons/win/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "icon": "build/icons/mac/icon.icns"
+    },
+    "linux": {
+      "icon": "build/icons/png/icon.png",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    }
+  }
+}
