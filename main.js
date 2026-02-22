@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, nativeImage, desktopCapturer, session } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -19,7 +19,98 @@ function createWindow() {
       enableRemoteModule: false,
       nodeIntegration: false
     }
+    
   });
+
+  session.defaultSession.setDisplayMediaRequestHandler(
+    async (request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], fetchWindowIcons: true });
+
+        if (!sources || sources.length === 0) {
+          console.warn('No capture sources available');
+          return callback();
+        }
+
+        // Prepare serializable sources (send dataURL thumbnails to renderer)
+        const serializable = sources.map(s => ({
+          id: s.id,
+          name: s.name || s.id,
+          thumbnailDataUrl: s.thumbnail && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null
+        }));
+
+        // Create a modal chooser BrowserWindow that shows thumbnails
+        const chooser = new BrowserWindow({
+          parent: mainWindow,
+          modal: true,
+          show: false,
+          width: 900,
+          height: 600,
+          resizable: false,
+          webPreferences: {
+            preload: path.join(__dirname, 'chooser-preload.js'),
+            contextIsolation: true,
+            enableRemoteModule: false,
+            nodeIntegration: false
+          }
+        });
+
+        // Clean up listeners if chooser closed without selection
+        let handled = false;
+
+        const selectionHandler = (event, selectedId) => {
+          try {
+            handled = true;
+            const selected = sources.find(s => s.id === selectedId);
+            if (!selected) {
+              console.warn('Selected source not found:', selectedId);
+              callback();
+            } else {
+              callback({ video: selected, audio: 'loopback' });
+            }
+          } catch (err) {
+            console.error('Error forwarding selected source', err);
+            callback();
+          } finally {
+            if (!chooser.isDestroyed()) chooser.close();
+          }
+        };
+
+        const cancelHandler = () => {
+          handled = true;
+          callback();
+          if (!chooser.isDestroyed()) chooser.close();
+        };
+
+        ipcMain.once('capture-source-selected', selectionHandler);
+        ipcMain.once('capture-source-canceled', cancelHandler);
+
+        chooser.loadFile(path.join(__dirname, 'capture-chooser.html'))
+          .then(() => {
+            chooser.webContents.send('capture-sources', serializable);
+            chooser.show();
+          })
+          .catch(err => {
+            console.error('Failed to load chooser UI', err);
+            ipcMain.removeListener('capture-source-selected', selectionHandler);
+            ipcMain.removeListener('capture-source-canceled', cancelHandler);
+            callback();
+          });
+
+        chooser.on('closed', () => {
+          // If the window closed without selection, ensure request is cancelled
+          if (!handled) callback();
+          ipcMain.removeListener('capture-source-selected', selectionHandler);
+          ipcMain.removeListener('capture-source-canceled', cancelHandler);
+        });
+      } catch (err) {
+        console.error('Error handling display media request', err);
+        callback();
+      }
+    },
+    { useSystemPicker: false }
+  );
+
   // Remove default application menu (hides the top "File/Edit/View/Window" menu)
   Menu.setApplicationMenu(null);
   // Load your Sharkord instance (local or remote)
