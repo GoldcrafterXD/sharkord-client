@@ -2,48 +2,15 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'"> 
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'"> 
     <title>Select screen or window</title>
-    <style>
-      :root{
-        --bg:#0a0a0a; /* requested background */
-        --fg:#171717; /* requested foreground/card color */
-        --muted:#98a0ad;
-        --accent:#6ee7b7;
-        --border: rgba(255,255,255,0.04);
-        --shadow: 0 6px 18px rgba(2,6,23,0.6);
-      }
-      html,body{height:100%; margin:0}
-      *{box-sizing:border-box}
-      /* Allow the modal content to scroll when window is small. Keep outer page fixed. */
-      body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 0; color: #e6eef6; background: var(--bg); display:flex; align-items:flex-start; justify-content:center; padding:18px; height:100vh; overflow:hidden }
-      .container{width:92%; max-width:980px; background: linear-gradient(180deg, var(--fg) 0%, rgba(23,23,23,0.98) 100%); border-radius:12px; padding:18px; box-shadow:var(--shadow); border:1px solid var(--border); max-height: calc(100vh - 36px); overflow:auto}
-      header{display:flex; align-items:center; justify-content:space-between; gap:12px}
-      h1{font-size:16px; margin:0; font-weight:600}
-      p.lead{margin:0; color:var(--muted); font-size:13px}
-
-      #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top:14px }
-      .tile { background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005)); border-radius:12px; overflow:hidden; cursor: pointer; border:1px solid transparent; transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease; display:flex; flex-direction:column }
-      .tile:focus{outline:none}
-      .tile:hover{ transform: translateY(-6px); box-shadow: 0 12px 30px rgba(2,6,23,0.65); border-color: rgba(110,231,183,0.18) }
-      .thumb-wrap{background:#05060a; display:flex; align-items:center; justify-content:center; height:140px }
-      .thumb{ width:100%; height:100%; object-fit:cover; display:block }
-      .meta{ padding:10px 12px; display:flex; align-items:center; gap:8px }
-      .name{ font-size:13px; color:#e6eef6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-
-      .btn{ padding:8px 12px; border-radius:8px; border:1px solid transparent; background:transparent; color:var(--muted); cursor:pointer }
-      .btn.ghost{ border:1px solid rgba(255,255,255,0.04) }
-      .btn.primary{ background:linear-gradient(90deg, rgba(110,231,183,0.16), rgba(110,231,183,0.08)); color:var(--accent); border:1px solid rgba(110,231,183,0.12) }
-
-      /* responsive */
-      @media (max-width:520px){ .container{padding:12px} .thumb-wrap{height:110px} }
-    </style>
+    <link rel="stylesheet" href="assets/style.css" />
   </head>
-  <body>
-    <div class="container" role="dialog" aria-labelledby="title">
+  <body class="align-top" data-accent="mint">
+    <div class="container wide" role="dialog" aria-labelledby="title">
       <header>
         <div>
-          <h1 id="title">Share your screen</h1>
+          <h1 id="title" class="title-sm">Share your screen</h1>
           <p class="lead">Choose a window or screen to share (click to select)</p>
         </div>
         <div>

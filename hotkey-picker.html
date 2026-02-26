@@ -4,168 +4,7 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Sharkord — Hotkey Picker</title>
-		<style>
-			:root {
-				--bg: #0b0b0c;
-				--card: #111214;
-				--panel: #171717;
-				--muted: #9aa3ad;
-				--accent: #2f9bff;
-				--accent-soft: rgba(47, 155, 255, 0.15);
-				--border: rgba(255, 255, 255, 0.04);
-				--danger: #ff8b8b;
-			}
-
-			* { box-sizing: border-box; }
-			html, body { height: 100%; }
-
-			body {
-				margin: 0;
-				font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-				background: linear-gradient(180deg, var(--bg), #050506);
-				color: #e6eef6;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				padding: 24px;
-			}
-
-			.container {
-				width: 100%;
-				max-width: 560px;
-			}
-
-			.card {
-				background: var(--card);
-				border-radius: 12px;
-				padding: 20px;
-				border: 1px solid var(--border);
-				box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
-			}
-
-			h1 {
-				margin: 0;
-				font-size: 20px;
-				font-weight: 700;
-			}
-
-			.lead {
-				margin: 6px 0 16px;
-				font-size: 13px;
-				color: var(--muted);
-			}
-
-			.row {
-				background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.005));
-				border: 1px solid var(--border);
-				border-radius: 10px;
-				padding: 12px;
-				display: grid;
-				grid-template-columns: 1fr auto;
-				gap: 10px;
-				align-items: end;
-				margin-bottom: 12px;
-			}
-
-			.label {
-				font-size: 13px;
-				color: var(--muted);
-				margin-bottom: 8px;
-				display: block;
-			}
-
-			.hotkey-input {
-				width: 100%;
-				background: transparent;
-				border: 1px solid var(--border);
-				padding: 10px 12px;
-				border-radius: 8px;
-				color: #e6eef6;
-				font-size: 14px;
-				outline: none;
-			}
-
-			.hotkey-input.recording {
-				border-color: var(--accent);
-				box-shadow: 0 0 0 3px var(--accent-soft);
-			}
-
-			.btn {
-				border: 1px solid var(--border);
-				background: transparent;
-				color: var(--muted);
-				border-radius: 8px;
-				padding: 10px 12px;
-				font-size: 13px;
-				cursor: pointer;
-			}
-
-			.btn.primary {
-				background: #202225;
-				color: #e6eef6;
-			}
-
-			.btn.capture {
-				min-width: 92px;
-			}
-
-			.btn.capture.recording {
-				border-color: var(--accent);
-				color: #cce6ff;
-			}
-
-			.actions {
-				display: flex;
-				gap: 8px;
-				margin-top: 14px;
-			}
-
-			.status {
-				margin-top: 12px;
-				font-size: 12px;
-				color: var(--muted);
-				min-height: 16px;
-			}
-
-			.status.error {
-				color: var(--danger);
-			}
-
-			.hint {
-				margin-top: 10px;
-				font-size: 12px;
-				color: var(--muted);
-			}
-
-			.toast {
-				position: fixed;
-				right: 20px;
-				bottom: 20px;
-				background: #202225;
-				color: #e6eef6;
-				border: 1px solid var(--border);
-				border-radius: 8px;
-				padding: 10px 12px;
-				font-size: 13px;
-				box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
-				opacity: 0;
-				transform: translateY(8px);
-				transition: opacity 0.2s ease, transform 0.2s ease;
-				pointer-events: none;
-				z-index: 9999;
-			}
-
-			.toast.show {
-				opacity: 1;
-				transform: translateY(0);
-			}
-
-			@media (max-width: 560px) {
-				.row {
-					grid-template-columns: 1fr;
-				}
-			}
-		</style>
+		<link rel="stylesheet" href="assets/style.css" />
 	</head>
 	<body>
 		<div class="container">
@@ -173,7 +12,7 @@
 				<h1>Hotkeys</h1>
 				<p class="lead">Choose one hotkey for mute and one for deafen.</p>
 
-				<div class="row" data-kind="mute">
+				<div class="row hotkey-row" data-kind="mute">
 					<div>
 						<label class="label" for="muteHotkey">Mute hotkey</label>
 						<input id="muteHotkey" class="hotkey-input" type="text" placeholder="Not set" readonly />
@@ -181,7 +20,7 @@
 					<button id="captureMute" class="btn capture" type="button">Set</button>
 				</div>
 
-				<div class="row" data-kind="deafen">
+				<div class="row hotkey-row" data-kind="deafen">
 					<div>
 						<label class="label" for="deafenHotkey">Deafen hotkey</label>
 						<input id="deafenHotkey" class="hotkey-input" type="text" placeholder="Not set" readonly />
@@ -361,6 +200,9 @@
 				try {
 					localStorage.setItem(STORAGE_KEYS.mute, muteValue);
 					localStorage.setItem(STORAGE_KEYS.deafen, deafenValue);
+					if (window.electronAPI && typeof window.electronAPI.persistHotkeys === 'function') {
+						window.electronAPI.persistHotkeys(muteValue, deafenValue);
+					}
 					const applied = await applyHotkeysWithIPC();
 					if (!applied) {
 						setStatus('Failed to save hotkeys.', true);

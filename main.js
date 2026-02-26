@@ -1,10 +1,51 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, nativeImage, desktopCapturer, session, shell } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const packageJson = require('./package.json');
 
 let mainWindow;
 let settingsWindow = null;
 let updateWindow = null;
+let cachedHotkeys = { mute: '', deafen: '' };
+
+function getHotkeyStorePath() {
+  try {
+    return path.join(app.getPath('userData'), 'hotkeys.json');
+  } catch (err) {
+    console.error('Failed to resolve hotkey store path', err);
+    return null;
+  }
+}
+
+function loadHotkeysFromDisk() {
+  const storePath = getHotkeyStorePath();
+  if (!storePath) return;
+  try {
+    if (fs.existsSync(storePath)) {
+      const raw = fs.readFileSync(storePath, 'utf8');
+      const parsed = JSON.parse(raw);
+      cachedHotkeys = {
+        mute: typeof parsed?.mute === 'string' ? parsed.mute : '',
+        deafen: typeof parsed?.deafen === 'string' ? parsed.deafen : ''
+      };
+    }
+  } catch (err) {
+    console.error('Failed to load hotkeys from disk', err);
+  }
+}
+
+function saveHotkeysToDisk(data) {
+  const storePath = getHotkeyStorePath();
+  if (!storePath) return;
+  try {
+    fs.writeFileSync(storePath, JSON.stringify({
+      mute: data?.mute || '',
+      deafen: data?.deafen || ''
+    }, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to save hotkeys to disk', err);
+  }
+}
 
 const DEFAULT_GITHUB_REPO = 'GoldcrafterXD/sharkord-client';
 
@@ -143,6 +184,8 @@ async function checkForUpdatesOnStartup() {
 app.on('ready', createWindow);
 
 function createWindow() {
+  loadHotkeysFromDisk();
+
   const appIcon = getAppIcon();
 
   mainWindow = new BrowserWindow({
@@ -405,73 +448,34 @@ function setupGlobalShortcuts() {
     }
   });
 
-  // Auto-register the specific hotkeys requested: Ctrl+Shift+M and Ctrl+Shift+D
-  try {
-    const registerAndForward = (accelerators, key) => {
-      if (!Array.isArray(accelerators)) accelerators = [accelerators];
-      console.log('Attempting to register global shortcut variants:', accelerators.join(' | '));
+  ipcMain.handle('persist-hotkeys', async (event, payload) => {
+    try {
+      cachedHotkeys = {
+        mute: payload?.mute || '',
+        deafen: payload?.deafen || ''
+      };
 
-      // debounce map to avoid repeated triggers while key is held
-      const lastTriggered = new Map();
-      const minInterval = 300; // ms
+      saveHotkeysToDisk(cachedHotkeys);
 
-      let registeredAccel = null;
-      for (const accel of accelerators) {
-        try {
-          if (globalShortcut.isRegistered(accel)) {
-            console.log('Already registered by another process or earlier:', accel);
-            registeredAccel = accel;
-            break;
-          }
-          const ok = globalShortcut.register(accel, () => {
-            try {
-              const now = Date.now();
-              const last = lastTriggered.get(accel) || 0;
-              if (now - last < minInterval) return; // ignore repeats
-              lastTriggered.set(accel, now);
-
-              if (!mainWindow || !mainWindow.webContents) return;
-              const upDownKey = (typeof key === 'string' ? key : String(key)).toUpperCase();
-              const down = {
-                type: 'keyDown',
-                key: upDownKey,
-                keyCode: upDownKey,
-                modifiers: ['control']
-              };
-              const up = {
-                type: 'keyUp',
-                key: upDownKey,
-                keyCode: upDownKey,
-                modifiers: ['control']
-              };
-              mainWindow.webContents.sendInputEvent(down);
-              mainWindow.webContents.sendInputEvent(up);
-            } catch (err) {
-              console.error('Error forwarding shortcut', accel, err);
-            }
-          });
-          console.log('Tried registering', accel, 'result:', ok);
-          if (ok) { registeredAccel = accel; break; }
-        } catch (err) {
-          console.error('Failed to register variant', accel, err);
-        }
+      // Mirror into the main window's localStorage so it persists across sessions for the primary UI.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const { mute, deafen } = cachedHotkeys;
+        await mainWindow.webContents.executeJavaScript(`
+          try {
+            localStorage.setItem('sharkord_hotkey_mute', ${JSON.stringify(cachedHotkeys.mute)});
+            localStorage.setItem('sharkord_hotkey_deafen', ${JSON.stringify(cachedHotkeys.deafen)});
+          } catch (e) { console.warn('Failed to mirror hotkeys into main window localStorage', e); }
+        `);
       }
 
-      if (!registeredAccel) console.warn('Failed to register any variant for', accelerators.join(', '));
-      else console.log('Registered accelerator:', registeredAccel);
-    };
+      return cachedHotkeys;
+    } catch (err) {
+      console.error('persist-hotkeys error', err);
+      return cachedHotkeys;
+    }
+  });
 
-    // Try multiple accelerator variants for M (some systems/apps capture certain variants).
-    // Add Alt/Alt+Ctrl fallbacks in case Ctrl+Shift+M is reserved by the OS or another app.
-    registerAndForward([
-      'Control+M',
-      'Ctrl+M',
-      'CommandOrControl+M'
-    ], 'M');
-    registerAndForward(['Control+D', 'Ctrl+D', 'CommandOrControl+D'], 'D');
-  } catch (err) {
-    console.error('Error auto-registering hotkeys', err);
-  }
+  ipcMain.handle('get-cached-hotkeys', () => cachedHotkeys);
 }
 
 app.on('window-all-closed', () => {

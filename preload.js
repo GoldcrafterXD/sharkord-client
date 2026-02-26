@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const HOTKEY_STORAGE_KEYS = {
+  mute: 'sharkord_hotkey_mute',
+  deafen: 'sharkord_hotkey_deafen'
+};
+
 contextBridge.exposeInMainWorld('electronAPI', {
   // Send dropped files to main process
   onFileDrop: (callback) => {
@@ -37,8 +42,49 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Global shortcut APIs
   registerGlobalShortcut: (accelerator, keyEvent) => ipcRenderer.invoke('register-global-shortcut', accelerator, keyEvent),
   unregisterGlobalShortcut: (accelerator) => ipcRenderer.invoke('unregister-global-shortcut', accelerator),
-  unregisterAllGlobalShortcuts: () => ipcRenderer.invoke('unregister-all-global-shortcuts')
+  unregisterAllGlobalShortcuts: () => ipcRenderer.invoke('unregister-all-global-shortcuts'),
+  persistHotkeys: (mute, deafen) => ipcRenderer.invoke('persist-hotkeys', { mute, deafen }),
+  getCachedHotkeys: () => ipcRenderer.invoke('get-cached-hotkeys')
 });
+
+async function applySavedHotkeysFromStorage() {
+  try {
+    let mute = localStorage.getItem(HOTKEY_STORAGE_KEYS.mute) || '';
+    let deafen = localStorage.getItem(HOTKEY_STORAGE_KEYS.deafen) || '';
+
+    // If localStorage is empty in this window, try the cached values from main.
+    if (!mute && !deafen && window.electronAPI?.getCachedHotkeys) {
+      const cached = await window.electronAPI.getCachedHotkeys();
+      mute = cached?.mute || '';
+      deafen = cached?.deafen || '';
+      if (mute || deafen) {
+        try {
+          if (mute) localStorage.setItem(HOTKEY_STORAGE_KEYS.mute, mute);
+          if (deafen) localStorage.setItem(HOTKEY_STORAGE_KEYS.deafen, deafen);
+        } catch (e) { /* ignore */ }
+      }
+    }
+
+    // Disk-backed cache is exposed via getCachedHotkeys; no further fallback needed.
+
+    // Clear any existing registrations before applying user choices.
+    await ipcRenderer.invoke('unregister-all-global-shortcuts');
+
+    let success = true;
+    if (mute) {
+      success = await ipcRenderer.invoke('register-global-shortcut', mute, { key: 'm', keyCode: 'M', modifiers: ['control'] });
+    }
+    if (deafen && success) {
+      success = await ipcRenderer.invoke('register-global-shortcut', deafen, { key: 'd', keyCode: 'D', modifiers: ['control'] }) && success;
+    }
+
+    if (!success) {
+      console.warn('One or more saved hotkeys failed to register.');
+    }
+  } catch (err) {
+    console.error('Failed to apply saved hotkeys from storage', err);
+  }
+}
 
 function injectPermanentSettingsButton() {
   try {
@@ -93,7 +139,11 @@ function injectPermanentSettingsButton() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', injectPermanentSettingsButton, { once: true });
+  document.addEventListener('DOMContentLoaded', () => {
+    injectPermanentSettingsButton();
+    applySavedHotkeysFromStorage();
+  }, { once: true });
 } else {
   injectPermanentSettingsButton();
+  applySavedHotkeysFromStorage();
 }

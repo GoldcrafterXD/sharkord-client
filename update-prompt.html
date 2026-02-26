@@ -4,126 +4,12 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Sharkord — Update available</title>
-		<style>
-			:root {
-				--bg: #0b0b0c;
-				--card: #111214;
-				--muted: #9aa3ad;
-				--accent: #2f9bff;
-				--accent-soft: rgba(47, 155, 255, 0.15);
-				--border: rgba(255, 255, 255, 0.04);
-			}
-
-			* { box-sizing: border-box; }
-			html, body { height: 100%; }
-
-			body {
-				margin: 0;
-				font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-				background: linear-gradient(180deg, var(--bg), #050506);
-				color: #e6eef6;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				padding: 24px;
-			}
-
-			.container {
-				width: 100%;
-				max-width: 560px;
-			}
-
-			.card {
-				background: var(--card);
-				border-radius: 12px;
-				padding: 20px;
-				border: 1px solid var(--border);
-				box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
-			}
-
-			h1 {
-				margin: 0;
-				font-size: 22px;
-				font-weight: 700;
-			}
-
-			.lead {
-				margin: 8px 0 16px;
-				font-size: 13px;
-				color: var(--muted);
-			}
-
-			.versions {
-				border: 1px solid var(--border);
-				border-radius: 10px;
-				padding: 12px;
-				background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0.005));
-				margin-bottom: 14px;
-			}
-
-			.row {
-				display: flex;
-				justify-content: space-between;
-				align-items: center;
-				font-size: 13px;
-				padding: 6px 0;
-			}
-
-			.row .key {
-				color: var(--muted);
-			}
-
-			.row .value {
-				font-weight: 600;
-			}
-
-			.actions {
-				display: flex;
-				gap: 8px;
-				margin-top: 14px;
-			}
-
-			.btn {
-				display: inline-flex;
-				align-items: center;
-				justify-content: center;
-				padding: 10px 12px;
-				border-radius: 8px;
-				border: 1px solid var(--border);
-				background: transparent;
-				color: var(--muted);
-				font-size: 13px;
-				cursor: pointer;
-				text-decoration: none;
-			}
-
-			.btn.primary {
-				background: #202225;
-				color: #e6eef6;
-				border-color: transparent;
-			}
-
-			.btn.primary:hover {
-				box-shadow: 0 0 0 3px var(--accent-soft);
-			}
-
-			.repo-link {
-				display: inline-block;
-				margin-top: 8px;
-				color: var(--accent);
-				text-decoration: none;
-				font-size: 13px;
-			}
-
-			.repo-link:hover {
-				text-decoration: underline;
-			}
-		</style>
+		<link rel="stylesheet" href="assets/style.css" />
 	</head>
 	<body>
 		<div class="container">
 			<div class="card" role="main" aria-live="polite">
-				<h1>Update available</h1>
+				<h1 class="title-lg">Update available</h1>
 				<p class="lead">A newer version of Sharkord is available. Updating is recommended for latest fixes and features.</p>
 
 				<div class="versions">
