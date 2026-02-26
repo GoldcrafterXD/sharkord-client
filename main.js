@@ -1,8 +1,144 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, nativeImage, desktopCapturer, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, nativeImage, desktopCapturer, session, shell } = require('electron');
 const path = require('path');
+const packageJson = require('./package.json');
 
 let mainWindow;
 let settingsWindow = null;
+let updateWindow = null;
+
+const DEFAULT_GITHUB_REPO = 'GoldcrafterXD/sharkord-client';
+
+function normalizeVersion(version) {
+  if (!version) return [];
+  return String(version)
+    .trim()
+    .replace(/^v/i, '')
+    .split('.')
+    .map(part => {
+      const parsed = parseInt(part, 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    });
+}
+
+function isRemoteVersionNewer(remoteVersion, localVersion) {
+  const remote = normalizeVersion(remoteVersion);
+  const local = normalizeVersion(localVersion);
+  const maxLength = Math.max(remote.length, local.length);
+
+  console.log("Local Version: " + local + "| Remote Version: " + remote);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const remotePart = remote[index] || 0;
+    const localPart = local[index] || 0;
+    if (remotePart > localPart) return true;
+    if (remotePart < localPart) return false;
+  }
+
+  return false;
+}
+
+async function fetchLatestRelease(ownerRepo) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(`https://api.github.com/repos/${ownerRepo}/releases/latest`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'sharkord-client-update-check'
+      },
+      signal: controller.signal
+    });
+
+    const responseObject = await response.json();
+
+    if (!response.ok) {
+      throw new Error(`GitHub API request failed (${response.status})`);
+    }
+
+    return await responseObject.tag_name;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function openUpdateWindow({ currentVersion, latestVersion, repoUrl, releaseUrl }) {
+  try {
+    if (updateWindow && !updateWindow.isDestroyed()) {
+      updateWindow.focus();
+      return;
+    }
+
+    updateWindow = new BrowserWindow({
+      width: 560,
+      height: 360,
+      resizable: false,
+      autoHideMenuBar: true,
+      parent: mainWindow || undefined,
+      modal: true,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+
+    const safeRepoUrl = repoUrl || 'https://github.com';
+    const safeReleaseUrl = releaseUrl || safeRepoUrl;
+
+    updateWindow.webContents.setWindowOpenHandler(({ url }) => {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    });
+
+    updateWindow.webContents.on('will-navigate', (event, url) => {
+      if (url !== updateWindow.webContents.getURL()) {
+        event.preventDefault();
+        shell.openExternal(url);
+      }
+    });
+
+    updateWindow.loadFile(path.join(__dirname, 'update-prompt.html'), {
+      query: {
+        current: currentVersion,
+        latest: latestVersion,
+        repo: safeRepoUrl,
+        release: safeReleaseUrl
+      }
+    });
+
+    updateWindow.on('closed', () => {
+      updateWindow = null;
+    });
+  } catch (err) {
+    console.error('Failed to open update window', err);
+  }
+}
+
+async function checkForUpdatesOnStartup() {
+  try {
+    const ownerRepo = DEFAULT_GITHUB_REPO;
+    const repoUrl = `https://github.com/${ownerRepo}`;
+    const currentVersion = app.getVersion();
+    const latestVersion = await fetchLatestRelease(ownerRepo);
+
+    if (!latestVersion) {
+      console.warn('No latest version found in GitHub release payload');
+      return;
+    }
+
+    if (isRemoteVersionNewer(latestVersion, currentVersion)) {
+      console.log("A newer version is available:", latestVersion);
+      openUpdateWindow({
+        currentVersion,
+        latestVersion,
+        repoUrl,
+        releaseUrl: `${repoUrl}/releases/latest`
+      });
+    }
+  } catch (err) {
+    console.error('Update check failed', err);
+  }
+}
 
 app.on('ready', createWindow);
 
@@ -20,7 +156,7 @@ function createWindow() {
       enableRemoteModule: false,
       nodeIntegration: false
     }
-    
+
   });
 
   session.defaultSession.setDisplayMediaRequestHandler(
@@ -116,7 +252,7 @@ function createWindow() {
   Menu.setApplicationMenu(null);
   // Load your Sharkord instance (local or remote)
   mainWindow.loadURL(`file://${__dirname}/index.html`); // Change to your Sharkord URL
-  
+
   // Open DevTools in development
   mainWindow.webContents.openDevTools();
 
@@ -136,6 +272,9 @@ function createWindow() {
   setupDragDrop();
   // Setup global shortcut handlers (renderer can register/unregister shortcuts)
   setupGlobalShortcuts();
+
+  // Check if a newer version is available.
+  checkForUpdatesOnStartup();
 }
 
 function openSettingsWindow() {

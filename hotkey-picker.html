@@ -137,6 +137,29 @@
 				color: var(--muted);
 			}
 
+			.toast {
+				position: fixed;
+				right: 20px;
+				bottom: 20px;
+				background: #202225;
+				color: #e6eef6;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				padding: 10px 12px;
+				font-size: 13px;
+				box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+				opacity: 0;
+				transform: translateY(8px);
+				transition: opacity 0.2s ease, transform 0.2s ease;
+				pointer-events: none;
+				z-index: 9999;
+			}
+
+			.toast.show {
+				opacity: 1;
+				transform: translateY(0);
+			}
+
 			@media (max-width: 560px) {
 				.row {
 					grid-template-columns: 1fr;
@@ -193,10 +216,29 @@
 			let captureTarget = null;
 			let muteValue = '';
 			let deafenValue = '';
+			let toastTimer = null;
 
 			function setStatus(message, isError = false) {
 				statusEl.textContent = message;
 				statusEl.classList.toggle('error', !!isError);
+			}
+
+			function showToast(message) {
+				let toastEl = document.getElementById('hotkeyToast');
+				if (!toastEl) {
+					toastEl = document.createElement('div');
+					toastEl.id = 'hotkeyToast';
+					toastEl.className = 'toast';
+					document.body.appendChild(toastEl);
+				}
+
+				toastEl.textContent = message;
+				toastEl.classList.add('show');
+
+				if (toastTimer) clearTimeout(toastTimer);
+				toastTimer = setTimeout(() => {
+					toastEl.classList.remove('show');
+				}, 2400);
 			}
 
 			function normalizeKeyName(key) {
@@ -265,16 +307,21 @@
 			}
 
 			async function applyHotkeysWithIPC() {
-				if (!window.electronAPI) return;
+				let success = false;
+				if (!window.electronAPI) return true;
 				if (typeof window.electronAPI.unregisterAllGlobalShortcuts === 'function') {
 					await window.electronAPI.unregisterAllGlobalShortcuts();
 				}
 				if (muteValue && typeof window.electronAPI.registerGlobalShortcut === 'function') {
-					await window.electronAPI.registerGlobalShortcut(muteValue, { key: 'm', keyCode: 'M', modifiers: ['control'] });
+					success = await window.electronAPI.registerGlobalShortcut(muteValue, { key: 'm', keyCode: 'M', modifiers: ['control'] });
 				}
-				if (deafenValue && typeof window.electronAPI.registerGlobalShortcut === 'function') {
-					await window.electronAPI.registerGlobalShortcut(deafenValue, { key: 'd', keyCode: 'D', modifiers: ['control'] });
+				if (deafenValue && typeof window.electronAPI.registerGlobalShortcut === 'function' && success) {
+					success = await window.electronAPI.registerGlobalShortcut(deafenValue, { key: 'd', keyCode: 'D', modifiers: ['control'] });
 				}
+				if (!success) {
+					showToast('Hotkey registration failed');
+				}
+				return success;
 			}
 
 			captureMuteBtn.addEventListener('click', () => startCapture('mute'));
@@ -314,7 +361,11 @@
 				try {
 					localStorage.setItem(STORAGE_KEYS.mute, muteValue);
 					localStorage.setItem(STORAGE_KEYS.deafen, deafenValue);
-					await applyHotkeysWithIPC();
+					const applied = await applyHotkeysWithIPC();
+					if (!applied) {
+						setStatus('Failed to save hotkeys.', true);
+						return;
+					}
 					setStatus('Hotkeys saved.');
 				} catch (err) {
 					console.error(err);
