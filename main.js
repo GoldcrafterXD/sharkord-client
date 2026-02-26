@@ -297,7 +297,7 @@ function createWindow() {
   mainWindow.loadURL(`file://${__dirname}/index.html`); // Change to your Sharkord URL
 
   // Open DevTools in development
-  mainWindow.webContents.openDevTools();
+  //mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
