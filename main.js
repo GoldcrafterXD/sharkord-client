@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, nativeImage, 
 const path = require('path');
 
 let mainWindow;
+let settingsWindow = null;
 
 app.on('ready', createWindow);
 
@@ -117,7 +118,7 @@ function createWindow() {
   mainWindow.loadURL(`file://${__dirname}/index.html`); // Change to your Sharkord URL
   
   // Open DevTools in development
-  // mainWindow.webContents.openDevTools();
+  mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -135,6 +136,38 @@ function createWindow() {
   setupDragDrop();
   // Setup global shortcut handlers (renderer can register/unregister shortcuts)
   setupGlobalShortcuts();
+}
+
+function openSettingsWindow() {
+  try {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.focus();
+      return;
+    }
+
+    settingsWindow = new BrowserWindow({
+      width: 640,
+      height: 520,
+      resizable: false,
+      autoHideMenuBar: true,
+      parent: mainWindow || undefined,
+      modal: false,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        enableRemoteModule: false,
+        nodeIntegration: false
+      }
+    });
+
+    settingsWindow.loadFile(path.join(__dirname, 'hotkey-picker.html'));
+
+    settingsWindow.on('closed', () => {
+      settingsWindow = null;
+    });
+  } catch (err) {
+    console.error('Failed to open settings window', err);
+  }
 }
 
 function getAppIcon() {
@@ -181,6 +214,11 @@ function setupDragDrop() {
       properties: ['openFile', 'multiSelections']
     });
     return result.filePaths;
+  });
+
+  ipcMain.handle('open-settings-window', () => {
+    openSettingsWindow();
+    return true;
   });
 }
 

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Sharkord — Hotkey Picker</title>
+		<style>
+			:root {
+				--bg: #0b0b0c;
+				--card: #111214;
+				--panel: #171717;
+				--muted: #9aa3ad;
+				--accent: #2f9bff;
+				--accent-soft: rgba(47, 155, 255, 0.15);
+				--border: rgba(255, 255, 255, 0.04);
+				--danger: #ff8b8b;
+			}
+
+			* { box-sizing: border-box; }
+			html, body { height: 100%; }
+
+			body {
+				margin: 0;
+				font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+				background: linear-gradient(180deg, var(--bg), #050506);
+				color: #e6eef6;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 24px;
+			}
+
+			.container {
+				width: 100%;
+				max-width: 560px;
+			}
+
+			.card {
+				background: var(--card);
+				border-radius: 12px;
+				padding: 20px;
+				border: 1px solid var(--border);
+				box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+			}
+
+			h1 {
+				margin: 0;
+				font-size: 20px;
+				font-weight: 700;
+			}
+
+			.lead {
+				margin: 6px 0 16px;
+				font-size: 13px;
+				color: var(--muted);
+			}
+
+			.row {
+				background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.005));
+				border: 1px solid var(--border);
+				border-radius: 10px;
+				padding: 12px;
+				display: grid;
+				grid-template-columns: 1fr auto;
+				gap: 10px;
+				align-items: end;
+				margin-bottom: 12px;
+			}
+
+			.label {
+				font-size: 13px;
+				color: var(--muted);
+				margin-bottom: 8px;
+				display: block;
+			}
+
+			.hotkey-input {
+				width: 100%;
+				background: transparent;
+				border: 1px solid var(--border);
+				padding: 10px 12px;
+				border-radius: 8px;
+				color: #e6eef6;
+				font-size: 14px;
+				outline: none;
+			}
+
+			.hotkey-input.recording {
+				border-color: var(--accent);
+				box-shadow: 0 0 0 3px var(--accent-soft);
+			}
+
+			.btn {
+				border: 1px solid var(--border);
+				background: transparent;
+				color: var(--muted);
+				border-radius: 8px;
+				padding: 10px 12px;
+				font-size: 13px;
+				cursor: pointer;
+			}
+
+			.btn.primary {
+				background: #202225;
+				color: #e6eef6;
+			}
+
+			.btn.capture {
+				min-width: 92px;
+			}
+
+			.btn.capture.recording {
+				border-color: var(--accent);
+				color: #cce6ff;
+			}
+
+			.actions {
+				display: flex;
+				gap: 8px;
+				margin-top: 14px;
+			}
+
+			.status {
+				margin-top: 12px;
+				font-size: 12px;
+				color: var(--muted);
+				min-height: 16px;
+			}
+
+			.status.error {
+				color: var(--danger);
+			}
+
+			.hint {
+				margin-top: 10px;
+				font-size: 12px;
+				color: var(--muted);
+			}
+
+			@media (max-width: 560px) {
+				.row {
+					grid-template-columns: 1fr;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<div class="card" role="main">
+				<h1>Hotkeys</h1>
+				<p class="lead">Choose one hotkey for mute and one for deafen.</p>
+
+				<div class="row" data-kind="mute">
+					<div>
+						<label class="label" for="muteHotkey">Mute hotkey</label>
+						<input id="muteHotkey" class="hotkey-input" type="text" placeholder="Not set" readonly />
+					</div>
+					<button id="captureMute" class="btn capture" type="button">Set</button>
+				</div>
+
+				<div class="row" data-kind="deafen">
+					<div>
+						<label class="label" for="deafenHotkey">Deafen hotkey</label>
+						<input id="deafenHotkey" class="hotkey-input" type="text" placeholder="Not set" readonly />
+					</div>
+					<button id="captureDeafen" class="btn capture" type="button">Set</button>
+				</div>
+
+				<div class="actions">
+					<button id="saveBtn" class="btn primary" type="button">Save</button>
+					<button id="clearBtn" class="btn" type="button">Clear</button>
+				</div>
+
+				<div id="status" class="status" aria-live="polite"></div>
+				<div class="hint">Press a key combination like Ctrl+Shift+M. Single modifier keys are not allowed.</div>
+			</div>
+		</div>
+
+		<script>
+			const muteInput = document.getElementById('muteHotkey');
+			const deafenInput = document.getElementById('deafenHotkey');
+			const captureMuteBtn = document.getElementById('captureMute');
+			const captureDeafenBtn = document.getElementById('captureDeafen');
+			const saveBtn = document.getElementById('saveBtn');
+			const clearBtn = document.getElementById('clearBtn');
+			const statusEl = document.getElementById('status');
+
+			const STORAGE_KEYS = {
+				mute: 'sharkord_hotkey_mute',
+				deafen: 'sharkord_hotkey_deafen'
+			};
+
+			let captureTarget = null;
+			let muteValue = '';
+			let deafenValue = '';
+
+			function setStatus(message, isError = false) {
+				statusEl.textContent = message;
+				statusEl.classList.toggle('error', !!isError);
+			}
+
+			function normalizeKeyName(key) {
+				if (!key) return '';
+				if (key === ' ') return 'Space';
+				if (key.length === 1) return key.toUpperCase();
+				const mapping = {
+					Control: 'Ctrl',
+					Escape: 'Esc',
+					ArrowUp: 'Up',
+					ArrowDown: 'Down',
+					ArrowLeft: 'Left',
+					ArrowRight: 'Right'
+				};
+				return mapping[key] || key;
+			}
+
+			function isModifierOnly(key) {
+				return ['Shift', 'Control', 'Alt', 'Meta'].includes(key);
+			}
+
+			function buildHotkeyFromEvent(e) {
+				const parts = [];
+				if (e.ctrlKey) parts.push('Ctrl');
+				if (e.altKey) parts.push('Alt');
+				if (e.shiftKey) parts.push('Shift');
+				if (e.metaKey) parts.push('Meta');
+
+				const key = normalizeKeyName(e.key);
+				if (!key || isModifierOnly(e.key)) return '';
+				parts.push(key);
+				return parts.join('+');
+			}
+
+			function setCaptureMode(kind, enabled) {
+				const input = kind === 'mute' ? muteInput : deafenInput;
+				const button = kind === 'mute' ? captureMuteBtn : captureDeafenBtn;
+
+				input.classList.toggle('recording', enabled);
+				button.classList.toggle('recording', enabled);
+				button.textContent = enabled ? 'Press keys…' : 'Set';
+			}
+
+			function startCapture(kind) {
+				if (captureTarget && captureTarget !== kind) setCaptureMode(captureTarget, false);
+				captureTarget = kind;
+				setCaptureMode(kind, true);
+				setStatus('Recording ' + kind + ' hotkey...');
+			}
+
+			function stopCapture() {
+				if (!captureTarget) return;
+				setCaptureMode(captureTarget, false);
+				captureTarget = null;
+			}
+
+			function loadFromStorage() {
+				try {
+					muteValue = localStorage.getItem(STORAGE_KEYS.mute) || '';
+					deafenValue = localStorage.getItem(STORAGE_KEYS.deafen) || '';
+				} catch (err) {
+					setStatus('Could not read saved hotkeys.', true);
+				}
+				muteInput.value = muteValue;
+				deafenInput.value = deafenValue;
+			}
+
+			async function applyHotkeysWithIPC() {
+				if (!window.electronAPI) return;
+				if (typeof window.electronAPI.unregisterAllGlobalShortcuts === 'function') {
+					await window.electronAPI.unregisterAllGlobalShortcuts();
+				}
+				if (muteValue && typeof window.electronAPI.registerGlobalShortcut === 'function') {
+					await window.electronAPI.registerGlobalShortcut(muteValue, { key: 'm', keyCode: 'M', modifiers: ['control'] });
+				}
+				if (deafenValue && typeof window.electronAPI.registerGlobalShortcut === 'function') {
+					await window.electronAPI.registerGlobalShortcut(deafenValue, { key: 'd', keyCode: 'D', modifiers: ['control'] });
+				}
+			}
+
+			captureMuteBtn.addEventListener('click', () => startCapture('mute'));
+			captureDeafenBtn.addEventListener('click', () => startCapture('deafen'));
+
+			window.addEventListener('keydown', (e) => {
+				if (!captureTarget) return;
+				e.preventDefault();
+
+				if (e.key === 'Escape') {
+					stopCapture();
+					setStatus('Capture canceled.');
+					return;
+				}
+
+				const combo = buildHotkeyFromEvent(e);
+				if (!combo) return;
+
+				if (captureTarget === 'mute') {
+					muteValue = combo;
+					muteInput.value = combo;
+				} else {
+					deafenValue = combo;
+					deafenInput.value = combo;
+				}
+
+				stopCapture();
+				setStatus('Captured: ' + combo);
+			});
+
+			saveBtn.addEventListener('click', async () => {
+				if (muteValue === deafenValue) {
+					setStatus('Mute and deafen hotkeys must be different.', true);
+					return;
+				}
+
+				try {
+					localStorage.setItem(STORAGE_KEYS.mute, muteValue);
+					localStorage.setItem(STORAGE_KEYS.deafen, deafenValue);
+					await applyHotkeysWithIPC();
+					setStatus('Hotkeys saved.');
+				} catch (err) {
+					console.error(err);
+					setStatus('Failed to save hotkeys.', true);
+				}
+			});
+
+			clearBtn.addEventListener('click', async () => {
+				stopCapture();
+				muteValue = '';
+				deafenValue = '';
+				muteInput.value = '';
+				deafenInput.value = '';
+				try {
+					localStorage.removeItem(STORAGE_KEYS.mute);
+					localStorage.removeItem(STORAGE_KEYS.deafen);
+					if (window.electronAPI && typeof window.electronAPI.unregisterAllGlobalShortcuts === 'function') {
+						await window.electronAPI.unregisterAllGlobalShortcuts();
+					}
+					setStatus('Hotkeys cleared.');
+				} catch (err) {
+					console.error(err);
+					setStatus('Failed to clear hotkeys.', true);
+				}
+			});
+
+			loadFromStorage();
+		</script>
+	</body>
+</html>
