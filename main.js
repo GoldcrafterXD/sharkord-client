@@ -1,3 +1,5 @@
+const appLoopback = require("application-loopback");
+const { getActiveWindowProcessIds, Window, startAudioCapture, stopAudioCapture } = appLoopback;
 const { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, nativeImage, desktopCapturer, session, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -7,6 +9,44 @@ let mainWindow;
 let settingsWindow = null;
 let updateWindow = null;
 let cachedHotkeys = { mute: '', deafen: '' };
+let currentLoopbackPid = null;
+
+function stopAppLoopbackCapture() {
+  if (currentLoopbackPid) {
+    try { stopAudioCapture(currentLoopbackPid); } catch (e) { /* ignore */ }
+    currentLoopbackPid = null;
+  }
+}
+
+async function startAppLoopbackCapture({ processId, titleSubstring = 'VLC media player' } = {}) {
+  try {
+    const windows = await getActiveWindowProcessIds();
+    const target = processId
+      ? windows.find((win) => win.processId === String(processId))
+      : windows.find((win) => win.title && win.title.includes(titleSubstring));
+
+    if (!target) {
+      console.warn(`No window found matching ${processId ? 'process ' + processId : '"' + titleSubstring + '"'} for loopback capture.`);
+      return;
+    }
+
+    // Stop any existing capture first
+    stopAppLoopbackCapture();
+
+    currentLoopbackPid = startAudioCapture(target.processId, {
+      onData: (chunk) => {
+        // Forward raw PCM chunk to renderer; renderer repackages into an audio track
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('app-audio-chunk', chunk);
+        }
+      }
+    });
+
+    console.log(`Started loopback capture for PID ${currentLoopbackPid} (${target.title}).`);
+  } catch (err) {
+    console.error('Failed to start app loopback capture', err);
+  }
+}
 
 function getHotkeyStorePath() {
   try {
@@ -206,6 +246,7 @@ function createWindow() {
     async (request, callback) => {
       try {
         const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], fetchWindowIcons: true });
+        const audioProcesses = await getActiveWindowProcessIds();
 
         if (!sources || sources.length === 0) {
           console.warn('No capture sources available');
@@ -238,15 +279,24 @@ function createWindow() {
         // Clean up listeners if chooser closed without selection
         let handled = false;
 
-        const selectionHandler = (event, selectedId) => {
+        const selectionHandler = (event, payload) => {
           try {
             handled = true;
-            const selected = sources.find(s => s.id === selectedId);
+            const sourceId = typeof payload === 'string' ? payload : payload?.sourceId;
+            const audioProcessId = typeof payload === 'object' ? payload?.audioProcessId : null;
+
+            const selected = sources.find(s => s.id === sourceId);
             if (!selected) {
-              console.warn('Selected source not found:', selectedId);
+              console.warn('Selected source not found:', sourceId);
               callback();
             } else {
               callback({ video: selected, audio: 'loopback' });
+
+              if (audioProcessId) {
+                startAppLoopbackCapture({ processId: audioProcessId });
+              } else {
+                stopAppLoopbackCapture();
+              }
             }
           } catch (err) {
             console.error('Error forwarding selected source', err);
@@ -267,7 +317,7 @@ function createWindow() {
 
         chooser.loadFile(path.join(__dirname, 'capture-chooser.html'))
           .then(() => {
-            chooser.webContents.send('capture-sources', serializable);
+            chooser.webContents.send('capture-sources', { sources: serializable, processes: audioProcesses });
             chooser.show();
           })
           .catch(err => {
@@ -297,7 +347,7 @@ function createWindow() {
   mainWindow.loadURL(`file://${__dirname}/index.html`); // Change to your Sharkord URL
 
   // Open DevTools in development
-  //mainWindow.webContents.openDevTools();
+  mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -375,6 +425,7 @@ app.on('will-quit', () => {
   } catch (err) {
     console.error('Error unregistering global shortcuts on quit', err);
   }
+  stopAppLoopbackCapture();
 });
 
 function setupDragDrop() {

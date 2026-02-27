@@ -12,6 +12,12 @@
         <div>
           <h1 id="title" class="title-sm">Share your screen</h1>
           <p class="lead">Choose a window or screen to share (click to select)</p>
+          <div class="form-row" style="margin-top:8px;">
+            <label for="audioSelect">Capture audio from</label>
+            <select id="audioSelect" class="input" aria-label="Select application audio source">
+              <option value="">No app audio</option>
+            </select>
+          </div>
         </div>
         <div>
           <button id="cancelBtn" class="btn ghost">Cancel</button>
@@ -24,6 +30,7 @@
     <script>
       const grid = document.getElementById('grid');
       const cancelBtn = document.getElementById('cancelBtn');
+      const audioSelect = document.getElementById('audioSelect');
 
       function makeTile(s){
         const tile = document.createElement('div');
@@ -49,16 +56,31 @@
         tile.appendChild(wrap);
         tile.appendChild(meta);
 
-        tile.addEventListener('click', ()=> window.chooserAPI.select(s.id));
-        tile.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.chooserAPI.select(s.id); } });
+        const selectAudioProcess = () => window.chooserAPI.select(s.id, audioSelect?.value || '');
+
+        tile.addEventListener('click', selectAudioProcess);
+        tile.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectAudioProcess(); } });
 
         return tile;
       }
 
-      window.chooserAPI.onSources((sources) => {
+      window.chooserAPI.onSources((sources, processes = []) => {
         grid.innerHTML = '';
         sources.forEach(s => {
           grid.appendChild(makeTile(s));
+        });
+
+        audioSelect.innerHTML = '';
+        const none = document.createElement('option');
+        none.value = '';
+        none.textContent = 'No app audio';
+        audioSelect.appendChild(none);
+
+        processes.forEach((p) => {
+          const opt = document.createElement('option');
+          opt.value = p.processId;
+          opt.textContent = `${p.title || 'Unknown'} (PID ${p.processId})`;
+          audioSelect.appendChild(opt);
         });
       });
 

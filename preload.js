@@ -44,8 +44,137 @@ contextBridge.exposeInMainWorld('electronAPI', {
   unregisterGlobalShortcut: (accelerator) => ipcRenderer.invoke('unregister-global-shortcut', accelerator),
   unregisterAllGlobalShortcuts: () => ipcRenderer.invoke('unregister-all-global-shortcuts'),
   persistHotkeys: (mute, deafen) => ipcRenderer.invoke('persist-hotkeys', { mute, deafen }),
-  getCachedHotkeys: () => ipcRenderer.invoke('get-cached-hotkeys')
+  getCachedHotkeys: () => ipcRenderer.invoke('get-cached-hotkeys'),
+
+  // Toggle loopback screen-share audio from renderer if needed
+  enableLoopbackScreenAudio: () => window.postMessage({ source: 'sharkord-electron', type: 'sharkord:set-loopback-audio', enabled: true }, '*'),
+  disableLoopbackScreenAudio: () => window.postMessage({ source: 'sharkord-electron', type: 'sharkord:set-loopback-audio', enabled: false }, '*')
 });
+
+function injectLoopbackScreenAudioPatch() {
+  try {
+    const script = document.createElement('script');
+    script.type = 'text/javascript';
+    script.textContent = `(() => {
+      if (!navigator || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia || !window.MediaStreamTrackGenerator || !window.AudioData) return;
+
+      const SAMPLE_RATE = 48000;
+      const CHANNELS = 2;
+      const BYTES_PER_SAMPLE = 2; // s16le
+
+      const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+      let loopbackState = {
+        enabled: true,
+        generator: null,
+        writer: null,
+        timestamp: 0
+      };
+
+      const ensureGenerator = () => {
+        if (loopbackState.generator && loopbackState.writer && loopbackState.generator.readyState === 'live') {
+          return loopbackState.generator;
+        }
+
+        stopGenerator();
+        loopbackState.generator = new MediaStreamTrackGenerator({ kind: 'audio' });
+        loopbackState.writer = loopbackState.generator.writable.getWriter();
+        loopbackState.timestamp = 0;
+
+        loopbackState.generator.addEventListener('ended', () => {
+          stopGenerator();
+        }, { once: true });
+
+        return loopbackState.generator;
+      };
+
+      const stopGenerator = () => {
+        try { loopbackState.writer?.close(); } catch (e) { }
+        try { loopbackState.generator?.stop?.(); } catch (e) { }
+        loopbackState.generator = null;
+        loopbackState.writer = null;
+        loopbackState.timestamp = 0;
+      };
+
+      navigator.mediaDevices.getDisplayMedia = async (constraints = {}) => {
+        const useCustomAudio = loopbackState.enabled === true;
+        const baseConstraints = (constraints && typeof constraints === 'object') ? constraints : {};
+        const adjustedConstraints = useCustomAudio ? { ...baseConstraints, audio: false } : baseConstraints;
+
+        const stream = await originalGetDisplayMedia(adjustedConstraints);
+
+        if (!useCustomAudio) return stream;
+
+        const gen = ensureGenerator();
+        if (!gen || gen.readyState !== 'live') return stream;
+
+        const existingAudio = stream.getAudioTracks();
+        for (const track of existingAudio) {
+          try { stream.removeTrack(track); track.stop(); } catch (e) { }
+        }
+
+        stream.addTrack(gen);
+        return stream;
+      };
+
+      const writePcmChunk = (uint8) => {
+        if (!loopbackState.enabled) return;
+        const gen = ensureGenerator();
+        const writer = loopbackState.writer;
+        if (!gen || !writer) return;
+
+        const frames = Math.floor(uint8.byteLength / (CHANNELS * BYTES_PER_SAMPLE));
+        if (frames <= 0) return;
+
+        const audioData = new AudioData({
+          format: 's16',
+          sampleRate: SAMPLE_RATE,
+          numberOfFrames: frames,
+          numberOfChannels: CHANNELS,
+          timestamp: loopbackState.timestamp,
+          data: uint8
+        });
+
+        loopbackState.timestamp += (frames / SAMPLE_RATE) * 1_000_000; // microseconds
+
+        writer.write(audioData).catch(() => {
+          // If the writer is closed, reset state so we recreate on next chunk
+          stopGenerator();
+        });
+      };
+
+      window.addEventListener('message', (event) => {
+        const data = event && event.data;
+        if (!data || data.source !== 'sharkord-electron') return;
+
+        if (data.type === 'sharkord:set-loopback-audio') {
+          loopbackState.enabled = !!data.enabled;
+          if (!loopbackState.enabled) stopGenerator();
+          return;
+        }
+
+        if (data.type === 'sharkord:loopback-chunk' && data.payload instanceof Uint8Array) {
+          writePcmChunk(data.payload);
+        }
+      });
+
+      // Expose a simple hook so page scripts can route the chunks without re-checking source
+      window.__sharkordHandleLoopbackChunk = (payload) => {
+        if (payload && payload instanceof Uint8Array) writePcmChunk(payload);
+      };
+
+      window.sharkordLoopbackScreenAudio = {
+        enable() { loopbackState.enabled = true; },
+        disable() { loopbackState.enabled = false; stopGenerator(); },
+        isEnabled() { return loopbackState.enabled; }
+      };
+    })();`;
+
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+  } catch (err) {
+    console.error('Failed to inject test screen audio patch', err);
+  }
+}
 
 async function applySavedHotkeysFromStorage() {
   try {
@@ -142,8 +271,24 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     injectPermanentSettingsButton();
     applySavedHotkeysFromStorage();
+    injectLoopbackScreenAudioPatch();
   }, { once: true });
 } else {
   injectPermanentSettingsButton();
   applySavedHotkeysFromStorage();
+  injectLoopbackScreenAudioPatch();
 }
+
+// Forward loopback PCM chunks from main -> preload -> page
+ipcRenderer.on('app-audio-chunk', (_event, chunk) => {
+  try {
+    if (chunk instanceof Uint8Array) {
+      window.postMessage({ source: 'sharkord-electron', type: 'sharkord:loopback-chunk', payload: chunk }, '*');
+    } else if (chunk?.data) {
+      // In case Buffer is serialized differently
+      window.postMessage({ source: 'sharkord-electron', type: 'sharkord:loopback-chunk', payload: new Uint8Array(chunk.data) }, '*');
+    }
+  } catch (err) {
+    console.error('Failed to forward loopback chunk', err);
+  }
+});
