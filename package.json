@@ -23,6 +23,9 @@
     "files": [
       "**/*"
     ],
+    "asarUnpack": [
+      "node_modules/application-loopback/bin/**"
+    ],
     "win": {
       "icon": "build/icons/win/icon.ico",
       "target": [

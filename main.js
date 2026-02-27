@@ -1,5 +1,5 @@
 const appLoopback = require("application-loopback");
-const { getActiveWindowProcessIds, Window, startAudioCapture, stopAudioCapture } = appLoopback;
+const { getActiveWindowProcessIds, Window, startAudioCapture, stopAudioCapture, setExecutablesRoot } = appLoopback;
 const { app, BrowserWindow, ipcMain, dialog, Menu, globalShortcut, nativeImage, desktopCapturer, session, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -10,6 +10,13 @@ let settingsWindow = null;
 let updateWindow = null;
 let cachedHotkeys = { mute: '', deafen: '' };
 let currentLoopbackPid = null;
+
+// Ensure native binaries are found both in dev and packaged builds
+const loopbackBinRoot = app.isPackaged
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'application-loopback', 'bin')
+  : path.join(__dirname, 'node_modules', 'application-loopback', 'bin');
+
+setExecutablesRoot(loopbackBinRoot);
 
 function stopAppLoopbackCapture() {
   if (currentLoopbackPid) {
